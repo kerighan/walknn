@@ -1,7 +1,7 @@
 import walker
 import numpy as np
 import networkx as nx
-from rwnn.model import create_model_2nd
+from WalkNN.model import create_model_2nd
 
 G = nx.read_gexf("datasets/cora/G.gexf")
 feats = np.load("datasets/cora/features.npy")

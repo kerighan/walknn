@@ -3,7 +3,7 @@ import numpy as np
 import walker
 
 
-class RWNN:
+class WalkNN:
     def __init__(
         self,
         n_walks=25,
