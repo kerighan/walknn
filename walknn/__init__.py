@@ -8,9 +8,9 @@ class WalkNN:
         self,
         n_walks=25,
         walk_len=10,
-        latent_dim=256,
+        latent_dim=[64, 32, 64],
         n_heads=8,
-        p=.25, q=.85,
+        p=.2, q=2,
         subsampling=.1
     ):
         self.n_walks = n_walks
