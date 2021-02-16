@@ -20,8 +20,8 @@ labels = y_true.copy()
 labels[test_index] = -1
 
 start = time.time()
-nn = WalkNN(latent_dim=[96, 32, 64], n_heads=8, walk_len=6, n_walks=20)
-y_pred = nn.fit_transform(G, feats, labels, epochs=1, batch_size=100)
+nn = WalkNN(latent_dim=[128, 32, 64], n_heads=8, walk_len=4, n_walks=20)
+y_pred = nn.fit_transform(G, feats, labels, epochs=1, batch_size=500)
 print((y_pred == y_true).mean())
 print((y_pred[test_index] == y_true[test_index]).mean())
 print(time.time() - start)

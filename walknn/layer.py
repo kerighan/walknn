@@ -35,11 +35,11 @@ class WeightedAttention(Layer):
 
     def call(self, input):
         origin = input[:, 0, :]
-        walk = input[:, :, :]
+        walk = input[:, 1:, :]
 
         # repeat origin to match walk length
         origin_seq = tf.repeat(origin[:, None, :],
-                               input.shape[1],
+                               input.shape[1] - 1,
                                axis=1)
 
         # multiheaded attention
