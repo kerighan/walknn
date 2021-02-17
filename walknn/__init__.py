@@ -1,17 +1,20 @@
-from .model import create_model
+from .model import create_model, create_classifier
 import numpy as np
 import walker
+import time
 
 
 class WalkNN:
     def __init__(
         self,
-        n_walks=25,
-        walk_len=10,
-        latent_dim=[64, 32, 64],
-        n_heads=8,
+        n_walks=20,
+        walk_len=5,
+        latent_dim=[64, 16, 32],
+        n_heads=4,
         p=.2, q=2,
-        subsampling=.1
+        subsampling=.1,
+        batch_size=400,
+        epochs=1
     ):
         self.n_walks = n_walks
         self.walk_len = walk_len
@@ -20,8 +23,15 @@ class WalkNN:
         self.p = p
         self.q = q
         self.subsampling = subsampling
-    
-    def fit_transform(self, G, X, y, batch_size=400, epochs=1):
+        self.batch_size = batch_size
+        self.epochs = epochs
+
+    def fit_predict(self, G, feats, y):
+        # get constants
+        self.n_feats = feats.shape[1]
+        self.n_classes = y.max() + 1
+        n_nodes = len(G.nodes)
+
         # create random walks
         walks = walker.random_walks(
             G, p=self.p, q=self.q,
@@ -30,29 +40,92 @@ class WalkNN:
         labels = np.tile(y, self.n_walks)
 
         # seperate train and predict set
-        X_train, y_train = [], []
-        for i in range(walks.shape[0]):
-            if labels[i] != -1:
-                X_train.append(walks[i])
-                y_train.append(labels[i])
-        X_train = np.array(X_train)
-        y_train = np.array(y_train)
+        train_set = np.where(y != -1)[0]
+        has_validation_data = train_set.shape[0] != n_nodes
+        if not has_validation_data:
+            X_train = walks
+            y_train = labels
+        else:
+            walk_train_set = np.where(labels != -1)[0]
+            X_train = walks[walk_train_set]
+            y_train = labels[walk_train_set]
 
-        # create and fit model
-        model = create_model(X, y, self.latent_dim, self.n_heads, self.walk_len)
-        model.fit(X_train, y_train, epochs=epochs, batch_size=batch_size)
+        # create model
+        model, classifier = create_model(
+            feats, y,
+            self.latent_dim,
+            self.n_heads,
+            self.walk_len)
+
+        # fit model
+        model.fit(
+            X_train, y_train,
+            epochs=self.epochs,
+            batch_size=self.batch_size)
+        self.classifier = classifier
 
         # predict for all walks
-        y_pred = model.predict(walks)
-        results = {}
-        for i in range(walks.shape[0]):
-            sample = walks[i, 0]
-            if sample in results:
-                results[sample] *= y_pred[i]
-            else:
-                results[sample] = y_pred[i]
-        
-        y_final = [0] * len(G.nodes)
-        for i in results:
-            y_final[i] = results[i].argmax()
-        return np.array(y_final)
+        y_pred = model.predict(walks)            
+
+        # combine 
+        res = np.zeros((n_nodes,), dtype=np.uint16)
+        for i in range(n_nodes):
+            index = n_nodes * np.arange(self.n_walks) + i
+            pred = np.argmax(np.sum(y_pred[index], axis=0))
+            res[i] = pred
+        return res
+
+    def predict(self, G, X):
+        from tensorflow.keras.layers import Input, Embedding
+        from tensorflow.keras.models import Sequential
+
+        n_nodes = len(G.nodes)
+        n_feats = X.shape[1]
+
+        # create random walks
+        walks = walker.random_walks(
+            G, p=self.p, q=self.q,
+            n_walks=self.n_walks, walk_len=self.walk_len,
+            sub_sampling=self.subsampling, verbose=False)
+
+        inp = Input((self.walk_len,))
+        features = Embedding(n_nodes, n_feats, weights=[X])
+
+        model = Sequential()
+        model.add(inp)
+        model.add(features)
+        model.add(self.classifier)
+        model.compile("nadam", "categorical_crossentropy", 
+                      metrics=["accuracy"])
+        y_pred = model.predict(walks, batch_size=1000)
+
+        res = np.zeros((n_nodes,), dtype=np.uint16)
+        for i in range(n_nodes):
+            index = n_nodes * np.arange(self.n_walks) + i
+            pred = np.argmax(np.sum(y_pred[index], axis=0))
+            res[i] = pred
+        return res
+
+    def save(self, filename):
+        import pickle
+        with open(filename, "wb") as f:
+            self.classifier_weights = self.classifier.get_weights()
+            del self.classifier
+            pickle.dump(self, f)
+
+    @staticmethod
+    def load(filename):
+        import pickle
+        with open(filename, "rb") as f:
+            nn = pickle.load(f)
+
+        if hasattr(nn, "classifier_weights"):
+            nn.classifier = create_classifier(
+                nn.n_feats,
+                nn.n_classes,
+                nn.latent_dim,
+                nn.n_heads,
+                nn.walk_len)
+            nn.classifier.set_weights(nn.classifier_weights)
+            del nn.classifier_weights
+        return nn

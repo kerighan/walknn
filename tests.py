@@ -1,27 +1,34 @@
 import numpy as np
 import networkx as nx
-import walker
 from walknn import WalkNN
-import time
 
 G = nx.read_gexf("datasets/cora/G.gexf")
 feats = np.load("datasets/cora/features.npy")
-y_true = np.load("datasets/cora/labels.npy").argmax(axis=1)
+y_true = np.load("datasets/cora/labels.npy")
 
 # G = nx.read_gexf("datasets/citeseer/G.gexf")
 # feats = np.load("datasets/citeseer/features.npy")
 # y_true = np.load("datasets/citeseer/labels.npy")
 
-# create test set
-test_index = np.arange(len(G.nodes))
-np.random.shuffle(test_index)
-test_index = test_index[:1000]
+# create random test set
 labels = y_true.copy()
+test_index = np.random.choice(
+    range(len(G.nodes)),
+    replace=False,
+    size=1000)
 labels[test_index] = -1
 
-start = time.time()
-nn = WalkNN(latent_dim=[128, 32, 64], n_heads=8, walk_len=4, n_walks=20)
-y_pred = nn.fit_transform(G, feats, labels, epochs=1, batch_size=500)
-print((y_pred == y_true).mean())
-print((y_pred[test_index] == y_true[test_index]).mean())
-print(time.time() - start)
+nn = WalkNN(n_walks=25, epochs=2)
+y_pred = nn.fit_predict(G, feats, labels)
+
+accuracy = (y_pred == y_true).mean()
+val_accuracy = (y_pred[test_index] == y_true[test_index]).mean()
+print(f"acc={accuracy:.03f}")
+print(f"val_acc={val_accuracy:.03f}")
+
+nn.save("model.p")
+
+nn = WalkNN.load("model.p")
+y_pred = nn.predict(G, feats)
+accuracy = (y_pred == y_true).mean()
+print(f"acc={accuracy:.03f}")

@@ -1,6 +1,8 @@
 import numpy as np
 import tensorflow as tf
 from tensorflow.keras.layers import Layer
+from tensorflow.keras.regularizers import l2, l1
+from tensorflow.keras.initializers import RandomNormal
 
 
 class WeightedAttention(Layer):
@@ -13,25 +15,35 @@ class WeightedAttention(Layer):
         in_dim = input_shape[-1]
         latent_dim = self.latent_dim
 
+        initializer = RandomNormal(mean=0., stddev=1.)
+
+        transform_shape = (self.n_heads, in_dim, latent_dim)
         # projection weights
-        self.query = tf.Variable(
-            tf.random.normal((self.n_heads, in_dim, latent_dim)),
-            trainable=True)
-        self.key = tf.Variable(
-            tf.random.normal((self.n_heads, in_dim, latent_dim)),
-            trainable=True)
-        self.value = tf.Variable(
-            tf.random.normal((self.n_heads, in_dim, latent_dim)),
-            trainable=True)
+        self.query = self.add_weight(
+            "query", transform_shape,
+            initializer=initializer,
+            regularizer=l1(1e-6),
+            dtype=np.float32)
+        self.key = self.add_weight(
+            "key", transform_shape,
+            initializer=initializer,
+            regularizer=l1(1e-6),
+            dtype=np.float32)
+        self.value = self.add_weight(
+            "value", transform_shape,
+            initializer=initializer,
+            regularizer=l1(1e-6),
+            dtype=np.float32)
 
         # attention weights
-        self.W = tf.Variable(
-            tf.random.normal((self.n_heads, latent_dim, 1)),
-            trainable=True)
-        self.O = tf.Variable(
-            tf.random.normal((self.n_heads * latent_dim, in_dim)),
-            trainable=True)
-        self.alpha = tf.Variable(tf.ones((self.n_heads,)), trainable=True)
+        self.W = self.add_weight(
+            "W", (self.n_heads, latent_dim, 1),
+            initializer=initializer,
+            dtype=np.float32)
+        self.O = self.add_weight(
+            "O", (self.n_heads * latent_dim, in_dim),
+            initializer=initializer,
+            dtype=np.float32)
 
     def call(self, input):
         origin = input[:, 0, :]
@@ -48,7 +60,7 @@ class WeightedAttention(Layer):
             key = tf.nn.sigmoid(tf.matmul(origin_seq, self.key[i]))
             query = tf.nn.sigmoid(tf.matmul(walk, self.query[i]))
             value = tf.nn.sigmoid(tf.matmul(walk, self.value[i]))
-            edge = key * query
+            edge = tf.cos(key * query)
 
             score = tf.matmul(edge, self.W[i])
             score = tf.nn.softmax(score, axis=-2)
@@ -58,9 +70,6 @@ class WeightedAttention(Layer):
         # concat and project
         results = tf.concat(results, axis=-1)
         results = tf.nn.sigmoid(tf.matmul(results, self.O))
-
-        # alpha = 1. / (1. + tf.exp(self.alpha))
-        # return alpha * results + (1 - alpha) * origin
         return results + origin
         # return tf.concat([results, origin], axis=-1)
 
