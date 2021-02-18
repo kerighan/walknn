@@ -25,7 +25,6 @@ accuracy = (y_pred == y_true).mean()
 val_accuracy = (y_pred[test_index] == y_true[test_index]).mean()
 print(f"acc={accuracy:.03f}")
 print(f"val_acc={val_accuracy:.03f}")
-
 nn.save("model.p")
 
 nn = WalkNN.load("model.p")
