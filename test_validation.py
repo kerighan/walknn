@@ -18,7 +18,7 @@ test_index = np.random.choice(
     size=1000)
 labels[test_index] = -1
 
-nn = WalkNN(n_walks=25, epochs=2)
+nn = WalkNN(n_walks=25, walk_len=20, epochs=2, batch_size=500)
 y_pred = nn.fit_predict(G, feats, labels)
 
 accuracy = (y_pred == y_true).mean()

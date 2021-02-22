@@ -44,6 +44,16 @@ class WeightedAttention(Layer):
             "O", (self.n_heads * latent_dim, in_dim),
             initializer=initializer,
             dtype=np.float32)
+        self.P = self.add_weight(
+            "P", (input_shape[-2] - 1, in_dim),
+            regularizer=l1(1e-6),
+            initializer=initializer,
+            dtype=np.float32)
+        self.bias = self.add_weight(
+            "bias", (self.n_heads,),
+            initializer=initializer,
+            regularizer=l2(1e-6),
+            dtype=np.float32)
 
     def call(self, input):
         origin = input[:, 0, :]
@@ -53,6 +63,7 @@ class WeightedAttention(Layer):
         origin_seq = tf.repeat(origin[:, None, :],
                                input.shape[1] - 1,
                                axis=1)
+        origin_seq += self.P
 
         # multiheaded attention
         results = []
@@ -60,7 +71,7 @@ class WeightedAttention(Layer):
             key = tf.nn.sigmoid(tf.matmul(origin_seq, self.key[i]))
             query = tf.nn.sigmoid(tf.matmul(walk, self.query[i]))
             value = tf.nn.sigmoid(tf.matmul(walk, self.value[i]))
-            edge = tf.cos(key * query)
+            edge = tf.cos(key * query) + self.bias[i]
 
             score = tf.matmul(edge, self.W[i])
             score = tf.nn.softmax(score, axis=-2)
@@ -70,8 +81,11 @@ class WeightedAttention(Layer):
         # concat and project
         results = tf.concat(results, axis=-1)
         results = tf.nn.sigmoid(tf.matmul(results, self.O))
-        return results + origin
-        # return tf.concat([results, origin], axis=-1)
+        # return results + origin
+
+        # origin_transform = tf.matmul(origin, self.P)
+        return tf.concat([results, origin], axis=-1)
+        # return results
 
 
 # class WeightedAttention(Layer):
